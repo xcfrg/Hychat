@@ -30,9 +30,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
-@Mod(modid = HyChat.MODID, version = HyChat.VERSION, clientSideOnly = true)
+@Mod(modid = HyChat.MODID, name = HyChat.NAME, version = HyChat.VERSION, clientSideOnly = true)
 public class HyChat {
     public static final String MODID = "hychat";
+    public static final String NAME = "HyChat";
     public static final String VERSION = "@VERSION@";
 
     private static HyChat INSTANCE;

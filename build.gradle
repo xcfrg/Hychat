@@ -1,89 +1,119 @@
-buildscript {
-    repositories {
-        maven { url = "https://maven.minecraftforge.net/" }
-        maven { url = "https://repo.spongepowered.org/maven" }
-        maven { url = "https://jitpack.io" }
-    }
-    dependencies {
-        classpath "com.github.asbyth:ForgeGradle:86b2392"
-        classpath "com.github.xcfrg:MixinGradle:0.6-SNAPSHOT"
-        classpath "com.github.jengelman.gradle.plugins:shadow:6.1.0"
-    }
+plugins {
+    id "java"
+    id "com.github.johnrengelman.shadow" version "6.1.0"
+    id "net.minecraftforge.gradle.forge" version "d583588"
+    id "org.spongepowered.mixin" version "451e8b3"
 }
 
-apply plugin: "java"
-apply plugin: "net.minecraftforge.gradle.forge"
-apply plugin: "org.spongepowered.mixin"
-apply plugin: "com.github.johnrengelman.shadow"
+repositories {
+    mavenCentral()
+    maven { url = "https://maven.minecraftforge.net/" }
+    maven { url = "https://repo.spongepowered.org/repository/maven-public/" }
+    maven { url = "https://jitpack.io" }
+}
 
-sourceCompatibility = targetCompatibility = 1.8
-
-version = "1.12-BETA"
+version = "1.12.1-BETA"
 group= "io.github.moulberry"
 archivesBaseName = "Hychat"
 String modid = "hychat"
 String mixinClassifier = "dep"
 
+sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
+compileJava.options.encoding = 'UTF-8'
+
 minecraft {
     version = "1.8.9-11.15.1.2318-1.8.9"
     runDir = "run"
-    
+    mappings = "stable_22"
+    makeObfSourceJar = false
+    clientJvmArgs += "-Dfml.coreMods.load=io.github.moulberry.hychat.tweaker.FMLLoadingPlugin"
+    clientRunArgs += "--mixin mixins.${modid}.json"
     replace "@VERSION@": project.version
     replaceIn "HyChat.java"
-   
-    mappings = "stable_20"
 }
 
-repositories {
-    jcenter()
-    maven { url "https://repo.spongepowered.org/maven/" }
-    flatDir {
-        dirs "deps"
+runClient {
+    standardInput = System.in
+}
+
+jar {
+    manifest.attributes(
+            "FMLCorePlugin": "io.github.moulberry.hychat.tweaker.FMLLoadingPlugin",
+            "FMLCorePluginContainsFMLMod": true,
+            "ForceLoadAsMod": true,
+            "MixinConfigs": "mixins.${modid}.json",
+            "ModSide": "CLIENT",
+            "TweakClass": "org.spongepowered.asm.launch.MixinTweaker",
+            "TweakOrder": "0"
+    )
+
+    enabled = false
+}
+
+sourceSets {
+    main {
+        ext.refMap = "mixins.${modid}.refmap.json"
     }
 }
 
+mixin {
+    disableRefMapWarning = true
+    defaultObfuscationEnv = searge
+    add sourceSets.main, "mixins.${modid}.refmap.json"
+}
+
+configurations {
+    include
+    implementation.extendsFrom(include)
+}
+
 dependencies {
-    implementation("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
+    include("org.spongepowered:mixin:0.7.11-SNAPSHOT") {
         exclude module: "guava"
         exclude module: "commons-io"
         exclude module: "gson"
         exclude module: "launchwrapper"
     }
+
     annotationProcessor("org.spongepowered:mixin:0.7.11-SNAPSHOT")
 }
 
-
-mixin {
-    add sourceSets.main, "mixins.${modid}.refmap.json"
-}
-
-jar {
-    manifest.attributes(
-        "TweakClass": "org.spongepowered.asm.launch.MixinTweaker",
-        "MixinConfigs": "mixins.${modid}.json",
-        "FMLCorePluginContainsFMLMod": true,
-        "ForceLoadAsMod": true
-    )
-}
-
 shadowJar {
-    dependencies {
-        include(dependency("org.spongepowered:mixin:0.7.11-SNAPSHOT"))
-    }
+    archiveClassifier.set("")
+    configurations = [project.configurations.include]
     
     exclude "module-info.class"
     exclude "dummyThing"
     exclude "LICENSE.txt"
 
-    classifier = mixinClassifier
+    duplicatesStrategy DuplicatesStrategy.EXCLUDE
 }
 
 reobf {
-    shadowJar { 
-        mappingType = "SEARGE" 
+    shadowJar {
+        classpath = sourceSets.main.compileClasspath
+        mappingType = "SEARGE"
     }
 }
 
+processResources {
+    // this will ensure that this task is redone when the versions change.
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    // replace stuff in mcmod.info, nothing else
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+
+        // replace version and mcversion
+        expand 'version': project.version, 'mcversion': project.minecraft.version
+    }
+
+    // copy everything else, thats not the mcmod.info
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
 
 task runClientFix {
     doLast {
@@ -93,25 +123,18 @@ task runClientFix {
     }
 }
 
-runClient {
-    standardInput = System.in
+task moveResources {
+    doLast {
+        ant.move file: "${buildDir}/resources/main",
+                todir: "${buildDir}/classes/java"
+    }
 }
 
-build.dependsOn(shadowJar)
+moveResources.dependsOn(processResources)
+classes.dependsOn(moveResources)
+
 runClient.dependsOn(build)
 runClient.dependsOn(runClientFix)
 
-processResources
-{
-    inputs.property "version", project.version
-    inputs.property "mcversion", project.minecraft.version
-
-    from(sourceSets.main.resources.srcDirs) {
-        include "mcmod.info"
-        expand "version": project.version, "mcversion": project.minecraft.version
-    }
-        
-    from(sourceSets.main.resources.srcDirs) {
-        exclude "mcmod.info"
-    }
-}
+jar.dependsOn(shadowJar)
+tasks.reobfJar.dependsOn(shadowJar)
